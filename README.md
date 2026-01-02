@@ -334,5 +334,4 @@ MIT License - see LICENSE file for details.
 
 ---
 
-Built with ❤️ for the security community. Designed to demonstrate advanced security tooling for the Anthropic Security Engineer role.
-# sentinel
+Built with ❤️ for the security community. Designed to demonstrate advanced security tooling for demonstration purposes.

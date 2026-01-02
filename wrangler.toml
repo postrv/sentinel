@@ -1,0 +1,61 @@
+name = "sentinel"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Development settings
+[dev]
+port = 8787
+local_protocol = "http"
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "sentinel-db"
+database_id = "placeholder-id-replace-after-creation"
+migrations_dir = "migrations"
+
+# KV Namespace for caching
+[[kv_namespaces]]
+binding = "CACHE"
+id = "placeholder-id-replace-after-creation"
+preview_id = "placeholder-preview-id"
+
+# R2 Bucket for artifacts
+[[r2_buckets]]
+binding = "ARTIFACTS"
+bucket_name = "sentinel-artifacts"
+
+# Environment variables (secrets should be set via `wrangler secret put`)
+[vars]
+ENVIRONMENT = "production"
+
+# Rate limiting configuration
+[vars.rate_limits]
+requests_per_minute = 60
+requests_per_day = 10000
+
+# Build configuration
+[build]
+command = "npm run typecheck"
+
+# Secrets (set via CLI: wrangler secret put SECRET_NAME)
+# Required secrets:
+# - VT_API_KEY: VirusTotal API key
+# - ABUSEIPDB_KEY: AbuseIPDB API key
+# - SHODAN_KEY: Shodan API key
+# - GREYNOISE_KEY: GreyNoise API key
+# - URLSCAN_KEY: URLScan.io API key
+# - ANTHROPIC_API_KEY: Anthropic Claude API key
+# - API_SECRET_KEY: Secret key for API authentication
+
+# Production environment
+[env.production]
+name = "sentinel"
+routes = [
+  { pattern = "sentinel.example.com/*", zone_name = "example.com" }
+]
+
+# Staging environment
+[env.staging]
+name = "sentinel-staging"

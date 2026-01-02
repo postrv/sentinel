@@ -1,0 +1,47 @@
+{
+  "name": "sentinel",
+  "version": "1.0.0",
+  "description": "AI-augmented security investigation platform",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "sentinel-mcp": "./server.js"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "build": "tsc && wrangler deploy --dry-run",
+    "db:migrate": "wrangler d1 migrations apply sentinel-db",
+    "db:migrate:local": "wrangler d1 migrations apply sentinel-db --local",
+    "mcp:start": "node server.js"
+  },
+  "keywords": [
+    "security",
+    "threat-intelligence",
+    "cloudflare-workers",
+    "mcp",
+    "kubernetes"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "yaml": "^2.3.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "@types/node": "^20.10.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "typescript": "^5.3.0",
+    "vitest": "^2.1.0",
+    "wrangler": "^3.91.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
