@@ -6,7 +6,35 @@
 
 import type { Env, AuthContext } from '../types';
 
-// CORS headers for all responses
+// Allowed origins for CORS (production frontends)
+const ALLOWED_ORIGINS = [
+  'https://sentinel-app-cj5.pages.dev',
+  'https://sentinel.pages.dev',
+  'http://localhost:5173',  // Vite dev server
+  'http://localhost:3000',  // Alternative dev port
+];
+
+/**
+ * Get CORS headers with origin validation
+ */
+export function getCorsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get('Origin');
+
+  // Check if origin is allowed
+  const allowedOrigin = origin && ALLOWED_ORIGINS.includes(origin)
+    ? origin
+    : ALLOWED_ORIGINS[0]; // Default to primary frontend
+
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
+    'Access-Control-Allow-Credentials': 'true',
+    'Vary': 'Origin',
+  };
+}
+
+// Legacy CORS headers (for backwards compatibility in non-request contexts)
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',

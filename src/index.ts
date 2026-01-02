@@ -8,6 +8,7 @@
 import { parseIPv4, parseDomain, parseURL, parseHash } from './lib/indicators';
 import {
   corsHeaders,
+  getCorsHeaders,
   validateApiKey,
   unauthorizedResponse,
   logAccess,
@@ -17,6 +18,7 @@ import { enrichIP, enrichDomain, enrichURL, enrichHash } from './services/enrich
 import { performLLMAnalysis, performLocalAnalysis } from './services/llm';
 import { generateMitigations } from './services/mitigations';
 import type { Env, AnalysisResult, IndicatorType, AnalyzeRequest, AuthContext } from './types';
+import { VALID_INDICATOR_TYPES } from './types';
 
 // =============================================================================
 // INDICATOR TYPE DETECTION
@@ -164,19 +166,25 @@ function bigIntReplacer(_key: string, value: unknown): unknown {
   return value;
 }
 
-function jsonResponse(data: unknown, status: number = 200, extraHeaders: Record<string, string> = {}): Response {
+function jsonResponse(
+  data: unknown,
+  status: number = 200,
+  extraHeaders: Record<string, string> = {},
+  request?: Request
+): Response {
+  const cors = request ? getCorsHeaders(request) : corsHeaders;
   return new Response(JSON.stringify(data, bigIntReplacer), {
     status,
     headers: {
-      ...corsHeaders,
+      ...cors,
       'Content-Type': 'application/json',
       ...extraHeaders,
     },
   });
 }
 
-function errorResponse(message: string, status: number = 400): Response {
-  return jsonResponse({ error: message }, status);
+function errorResponse(message: string, status: number = 400, request?: Request): Response {
+  return jsonResponse({ error: message }, status, {}, request);
 }
 
 // =============================================================================
@@ -193,7 +201,7 @@ async function handleAnalyze(
     const { indicator, type } = body;
 
     if (!indicator) {
-      return errorResponse('Missing indicator', 400);
+      return errorResponse('Missing indicator', 400, request);
     }
 
     // Auto-detect type if not provided
@@ -215,7 +223,7 @@ async function handleAnalyze(
         result = await handleAnalyzeHash(indicator, env);
         break;
       default:
-        return errorResponse('Unknown indicator type', 400);
+        return errorResponse('Unknown indicator type', 400, request);
     }
 
     // Store in database for audit trail
@@ -243,13 +251,15 @@ async function handleAnalyze(
       console.error('Database write error:', dbError);
     }
 
-    return jsonResponse(result);
+    return jsonResponse(result, 200, {}, request);
   } catch (error) {
     console.error('Analysis error:', error);
-    return errorResponse(
-      error instanceof Error ? error.message : 'Internal error',
-      error instanceof Error && error.message.includes('Invalid') ? 400 : 500
-    );
+    // Sanitize error messages - only expose "Invalid" messages to clients
+    const message = error instanceof Error && error.message.includes('Invalid')
+      ? error.message
+      : 'Internal error';
+    const status = error instanceof Error && error.message.includes('Invalid') ? 400 : 500;
+    return errorResponse(message, status, request);
   }
 }
 
@@ -280,7 +290,12 @@ async function handleGetAnalysis(
   const type = url.searchParams.get('type');
 
   if (!indicator) {
-    return errorResponse('Missing indicator parameter', 400);
+    return errorResponse('Missing indicator parameter', 400, request);
+  }
+
+  // Validate type parameter to prevent injection
+  if (type && !VALID_INDICATOR_TYPES.includes(type as IndicatorType)) {
+    return errorResponse('Invalid type parameter. Must be: ip, domain, url, or hash', 400, request);
   }
 
   try {
@@ -291,16 +306,16 @@ async function handleGetAnalysis(
       .first<{ result: string; created_at: string; updated_at: string }>();
 
     if (!result) {
-      return errorResponse('Analysis not found', 404);
+      return errorResponse('Analysis not found', 404, request);
     }
 
     return jsonResponse({
       ...JSON.parse(result.result),
       cachedAt: result.updated_at,
-    });
+    }, 200, {}, request);
   } catch (error) {
     console.error('Database read error:', error);
-    return errorResponse('Internal error', 500);
+    return errorResponse('Internal error', 500, request);
   }
 }
 
@@ -312,6 +327,11 @@ async function handleListAnalyses(
   const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 100);
   const offset = parseInt(url.searchParams.get('offset') || '0', 10);
   const type = url.searchParams.get('type');
+
+  // Validate type parameter to prevent injection
+  if (type && !VALID_INDICATOR_TYPES.includes(type as IndicatorType)) {
+    return errorResponse('Invalid type parameter. Must be: ip, domain, url, or hash', 400, request);
+  }
 
   try {
     const query = type
@@ -336,10 +356,10 @@ async function handleListAnalyses(
         offset,
         hasMore: results.results.length === limit,
       },
-    });
+    }, 200, {}, request);
   } catch (error) {
     console.error('Database read error:', error);
-    return errorResponse('Internal error', 500);
+    return errorResponse('Internal error', 500, request);
   }
 }
 
@@ -355,7 +375,7 @@ export default {
 
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
+      return new Response(null, { headers: getCorsHeaders(request) });
     }
 
     // Validate authentication
@@ -375,7 +395,7 @@ export default {
     // Check rate limit (stricter for unauthenticated: 10/min, 100/day)
     const rateLimit = await checkRateLimit(request, env, auth);
     if (!rateLimit.allowed) {
-      return rateLimitExceededResponse(rateLimit);
+      return rateLimitExceededResponse(rateLimit, request);
     }
 
     let response: Response;
@@ -389,7 +409,7 @@ export default {
       } else if (path === '/api/analyses' && request.method === 'GET') {
         response = await handleListAnalyses(request, env);
       } else {
-        response = errorResponse('Not found', 404);
+        response = errorResponse('Not found', 404, request);
       }
 
       // Add rate limit headers
@@ -402,7 +422,11 @@ export default {
       return response;
     } catch (error) {
       console.error('Worker error:', error);
-      return errorResponse(error instanceof Error ? error.message : 'Internal error', 500);
+      // Sanitize error messages in production - don't leak internal details
+      const message = error instanceof Error && error.message.includes('Invalid')
+        ? error.message
+        : 'Internal error';
+      return errorResponse(message, 500, request);
     }
   },
 };

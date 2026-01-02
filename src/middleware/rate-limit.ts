@@ -5,7 +5,7 @@
  */
 
 import type { Env, AuthContext, RateLimitResult } from '../types';
-import { corsHeaders } from './auth';
+import { corsHeaders, getCorsHeaders } from './auth';
 
 /**
  * Get the current minute window key
@@ -117,7 +117,8 @@ export async function checkRateLimit(
 /**
  * Create rate limit exceeded response
  */
-export function rateLimitExceededResponse(result: RateLimitResult): Response {
+export function rateLimitExceededResponse(result: RateLimitResult, request?: Request): Response {
+  const cors = request ? getCorsHeaders(request) : corsHeaders;
   return new Response(
     JSON.stringify({
       error: 'Rate limit exceeded',
@@ -128,7 +129,7 @@ export function rateLimitExceededResponse(result: RateLimitResult): Response {
     {
       status: 429,
       headers: {
-        ...corsHeaders,
+        ...cors,
         'Content-Type': 'application/json',
         'Retry-After': String(result.retryAfter || 60),
         'X-RateLimit-Remaining': String(result.remaining),

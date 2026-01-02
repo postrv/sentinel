@@ -29,6 +29,8 @@ export interface Env {
 
 export type IndicatorType = 'ip' | 'domain' | 'url' | 'hash';
 
+export const VALID_INDICATOR_TYPES: IndicatorType[] = ['ip', 'domain', 'url', 'hash'];
+
 export interface AnalysisResult {
   indicator: string;
   type: IndicatorType;
