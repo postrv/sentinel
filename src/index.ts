@@ -166,25 +166,45 @@ function bigIntReplacer(_key: string, value: unknown): unknown {
   return value;
 }
 
+/**
+ * Generate a unique request ID for tracing
+ */
+function generateRequestId(): string {
+  return crypto.randomUUID();
+}
+
+/**
+ * Standard security headers for all responses
+ */
+function getSecurityHeaders(requestId: string): Record<string, string> {
+  return {
+    'X-Request-ID': requestId,
+    'X-Content-Type-Options': 'nosniff',
+  };
+}
+
 function jsonResponse(
   data: unknown,
   status: number = 200,
   extraHeaders: Record<string, string> = {},
-  request?: Request
+  request?: Request,
+  requestId?: string
 ): Response {
   const cors = request ? getCorsHeaders(request) : corsHeaders;
+  const securityHeaders = getSecurityHeaders(requestId || generateRequestId());
   return new Response(JSON.stringify(data, bigIntReplacer), {
     status,
     headers: {
       ...cors,
+      ...securityHeaders,
       'Content-Type': 'application/json',
       ...extraHeaders,
     },
   });
 }
 
-function errorResponse(message: string, status: number = 400, request?: Request): Response {
-  return jsonResponse({ error: message }, status, {}, request);
+function errorResponse(message: string, status: number = 400, request?: Request, requestId?: string): Response {
+  return jsonResponse({ error: message }, status, {}, request, requestId);
 }
 
 // =============================================================================
@@ -194,14 +214,15 @@ function errorResponse(message: string, status: number = 400, request?: Request)
 async function handleAnalyze(
   request: Request,
   env: Env,
-  _auth: AuthContext
+  _auth: AuthContext,
+  requestId: string
 ): Promise<Response> {
   try {
     const body = (await request.json()) as AnalyzeRequest;
     const { indicator, type } = body;
 
     if (!indicator) {
-      return errorResponse('Missing indicator', 400, request);
+      return errorResponse('Missing indicator', 400, request, requestId);
     }
 
     // Auto-detect type if not provided
@@ -223,7 +244,7 @@ async function handleAnalyze(
         result = await handleAnalyzeHash(indicator, env);
         break;
       default:
-        return errorResponse('Unknown indicator type', 400, request);
+        return errorResponse('Unknown indicator type', 400, request, requestId);
     }
 
     // Store in database for audit trail
@@ -251,7 +272,7 @@ async function handleAnalyze(
       console.error('Database write error:', dbError);
     }
 
-    return jsonResponse(result, 200, {}, request);
+    return jsonResponse(result, 200, {}, request, requestId);
   } catch (error) {
     console.error('Analysis error:', error);
     // Sanitize error messages - only expose "Invalid" messages to clients
@@ -259,11 +280,11 @@ async function handleAnalyze(
       ? error.message
       : 'Internal error';
     const status = error instanceof Error && error.message.includes('Invalid') ? 400 : 500;
-    return errorResponse(message, status, request);
+    return errorResponse(message, status, request, requestId);
   }
 }
 
-async function handleHealth(env: Env): Promise<Response> {
+async function handleHealth(env: Env, requestId: string): Promise<Response> {
   // Basic health check
   let dbStatus = 'ok';
 
@@ -278,24 +299,25 @@ async function handleHealth(env: Env): Promise<Response> {
     timestamp: new Date().toISOString(),
     version: '1.0.0',
     database: dbStatus,
-  });
+  }, 200, {}, undefined, requestId);
 }
 
 async function handleGetAnalysis(
   request: Request,
-  env: Env
+  env: Env,
+  requestId: string
 ): Promise<Response> {
   const url = new URL(request.url);
   const indicator = url.searchParams.get('indicator');
   const type = url.searchParams.get('type');
 
   if (!indicator) {
-    return errorResponse('Missing indicator parameter', 400, request);
+    return errorResponse('Missing indicator parameter', 400, request, requestId);
   }
 
   // Validate type parameter to prevent injection
   if (type && !VALID_INDICATOR_TYPES.includes(type as IndicatorType)) {
-    return errorResponse('Invalid type parameter. Must be: ip, domain, url, or hash', 400, request);
+    return errorResponse('Invalid type parameter. Must be: ip, domain, url, or hash', 400, request, requestId);
   }
 
   try {
@@ -306,22 +328,23 @@ async function handleGetAnalysis(
       .first<{ result: string; created_at: string; updated_at: string }>();
 
     if (!result) {
-      return errorResponse('Analysis not found', 404, request);
+      return errorResponse('Analysis not found', 404, request, requestId);
     }
 
     return jsonResponse({
       ...JSON.parse(result.result),
       cachedAt: result.updated_at,
-    }, 200, {}, request);
+    }, 200, {}, request, requestId);
   } catch (error) {
     console.error('Database read error:', error);
-    return errorResponse('Internal error', 500, request);
+    return errorResponse('Internal error', 500, request, requestId);
   }
 }
 
 async function handleListAnalyses(
   request: Request,
-  env: Env
+  env: Env,
+  requestId: string
 ): Promise<Response> {
   const url = new URL(request.url);
   const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 100);
@@ -330,7 +353,7 @@ async function handleListAnalyses(
 
   // Validate type parameter to prevent injection
   if (type && !VALID_INDICATOR_TYPES.includes(type as IndicatorType)) {
-    return errorResponse('Invalid type parameter. Must be: ip, domain, url, or hash', 400, request);
+    return errorResponse('Invalid type parameter. Must be: ip, domain, url, or hash', 400, request, requestId);
   }
 
   try {
@@ -356,10 +379,10 @@ async function handleListAnalyses(
         offset,
         hasMore: results.results.length === limit,
       },
-    }, 200, {}, request);
+    }, 200, {}, request, requestId);
   } catch (error) {
     console.error('Database read error:', error);
-    return errorResponse('Internal error', 500, request);
+    return errorResponse('Internal error', 500, request, requestId);
   }
 }
 
@@ -370,12 +393,18 @@ async function handleListAnalyses(
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const startTime = Date.now();
+    const requestId = generateRequestId();
     const url = new URL(request.url);
     const path = url.pathname;
 
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: getCorsHeaders(request) });
+      return new Response(null, {
+        headers: {
+          ...getCorsHeaders(request),
+          ...getSecurityHeaders(requestId),
+        },
+      });
     }
 
     // Validate authentication
@@ -383,19 +412,19 @@ export default {
 
     // Public endpoints (no auth required)
     if (path === '/api/health') {
-      return handleHealth(env);
+      return handleHealth(env, requestId);
     }
 
     // /api/analyze allows unauthenticated access with stricter rate limits
     // Other endpoints require authentication
     if (!auth.isAuthenticated && path !== '/api/analyze') {
-      return unauthorizedResponse('Invalid or missing API key');
+      return unauthorizedResponse('Invalid or missing API key', requestId);
     }
 
     // Check rate limit (stricter for unauthenticated: 10/min, 100/day)
     const rateLimit = await checkRateLimit(request, env, auth);
     if (!rateLimit.allowed) {
-      return rateLimitExceededResponse(rateLimit, request);
+      return rateLimitExceededResponse(rateLimit, request, requestId);
     }
 
     let response: Response;
@@ -403,13 +432,13 @@ export default {
     try {
       // Route handling
       if (path === '/api/analyze' && request.method === 'POST') {
-        response = await handleAnalyze(request, env, auth);
+        response = await handleAnalyze(request, env, auth, requestId);
       } else if (path === '/api/analysis' && request.method === 'GET') {
-        response = await handleGetAnalysis(request, env);
+        response = await handleGetAnalysis(request, env, requestId);
       } else if (path === '/api/analyses' && request.method === 'GET') {
-        response = await handleListAnalyses(request, env);
+        response = await handleListAnalyses(request, env, requestId);
       } else {
-        response = errorResponse('Not found', 404, request);
+        response = errorResponse('Not found', 404, request, requestId);
       }
 
       // Add rate limit headers
@@ -426,7 +455,7 @@ export default {
       const message = error instanceof Error && error.message.includes('Invalid')
         ? error.message
         : 'Internal error';
-      return errorResponse(message, 500, request);
+      return errorResponse(message, 500, request, requestId);
     }
   },
 };

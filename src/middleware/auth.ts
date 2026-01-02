@@ -152,16 +152,21 @@ export async function validateApiKey(
 /**
  * Create authentication error response
  */
-export function unauthorizedResponse(message: string = 'Unauthorized'): Response {
+export function unauthorizedResponse(message: string = 'Unauthorized', requestId?: string): Response {
+  const headers: Record<string, string> = {
+    ...corsHeaders,
+    'Content-Type': 'application/json',
+    'WWW-Authenticate': 'Bearer realm="Sentinel API"',
+    'X-Content-Type-Options': 'nosniff',
+  };
+  if (requestId) {
+    headers['X-Request-ID'] = requestId;
+  }
   return new Response(
     JSON.stringify({ error: message }),
     {
       status: 401,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json',
-        'WWW-Authenticate': 'Bearer realm="Sentinel API"',
-      },
+      headers,
     }
   );
 }

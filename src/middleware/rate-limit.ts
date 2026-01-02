@@ -117,8 +117,19 @@ export async function checkRateLimit(
 /**
  * Create rate limit exceeded response
  */
-export function rateLimitExceededResponse(result: RateLimitResult, request?: Request): Response {
+export function rateLimitExceededResponse(result: RateLimitResult, request?: Request, requestId?: string): Response {
   const cors = request ? getCorsHeaders(request) : corsHeaders;
+  const headers: Record<string, string> = {
+    ...cors,
+    'Content-Type': 'application/json',
+    'Retry-After': String(result.retryAfter || 60),
+    'X-RateLimit-Remaining': String(result.remaining),
+    'X-RateLimit-Reset': new Date(result.resetAt).toISOString(),
+    'X-Content-Type-Options': 'nosniff',
+  };
+  if (requestId) {
+    headers['X-Request-ID'] = requestId;
+  }
   return new Response(
     JSON.stringify({
       error: 'Rate limit exceeded',
@@ -128,13 +139,7 @@ export function rateLimitExceededResponse(result: RateLimitResult, request?: Req
     }),
     {
       status: 429,
-      headers: {
-        ...cors,
-        'Content-Type': 'application/json',
-        'Retry-After': String(result.retryAfter || 60),
-        'X-RateLimit-Remaining': String(result.remaining),
-        'X-RateLimit-Reset': new Date(result.resetAt).toISOString(),
-      },
+      headers,
     }
   );
 }
