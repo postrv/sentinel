@@ -12,14 +12,13 @@ local_protocol = "http"
 [[d1_databases]]
 binding = "DB"
 database_name = "sentinel-db"
-database_id = "placeholder-id-replace-after-creation"
+database_id = "16180dc5-7a35-41f6-88df-77c4d1330b1c"
 migrations_dir = "migrations"
 
 # KV Namespace for caching
 [[kv_namespaces]]
 binding = "CACHE"
-id = "placeholder-id-replace-after-creation"
-preview_id = "placeholder-preview-id"
+id = "b7829167f40044439c3ae4a77ac7c3b4"
 
 # R2 Bucket for artifacts
 [[r2_buckets]]
@@ -30,10 +29,10 @@ bucket_name = "sentinel-artifacts"
 [vars]
 ENVIRONMENT = "production"
 
-# Rate limiting configuration
+# Rate limiting configuration (authenticated users)
 [vars.rate_limits]
-requests_per_minute = 60
-requests_per_day = 10000
+requests_per_minute = 30
+requests_per_day = 1000
 
 # Build configuration
 [build]
@@ -49,13 +48,8 @@ command = "npm run typecheck"
 # - ANTHROPIC_API_KEY: Anthropic Claude API key
 # - API_SECRET_KEY: Secret key for API authentication
 
-# Production environment
-[env.production]
-name = "sentinel"
-routes = [
-  { pattern = "sentinel.example.com/*", zone_name = "example.com" }
-]
-
-# Staging environment
-[env.staging]
-name = "sentinel-staging"
+# Environments (optional custom domains)
+# [env.production]
+# routes = [
+#   { pattern = "sentinel.yourdomain.com/*", zone_name = "yourdomain.com" }
+# ]

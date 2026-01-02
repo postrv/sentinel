@@ -366,12 +366,13 @@ export default {
       return handleHealth(env);
     }
 
-    // Protected endpoints
-    if (!auth.isAuthenticated) {
+    // /api/analyze allows unauthenticated access with stricter rate limits
+    // Other endpoints require authentication
+    if (!auth.isAuthenticated && path !== '/api/analyze') {
       return unauthorizedResponse('Invalid or missing API key');
     }
 
-    // Check rate limit
+    // Check rate limit (stricter for unauthenticated: 10/min, 100/day)
     const rateLimit = await checkRateLimit(request, env, auth);
     if (!rateLimit.allowed) {
       return rateLimitExceededResponse(rateLimit);

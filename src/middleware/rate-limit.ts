@@ -51,8 +51,10 @@ export async function checkRateLimit(
   const minuteWindow = getMinuteWindow();
   const dayWindow = getDayWindow();
 
-  const minuteLimit = auth.rateLimitPerMinute || 60;
-  const dayLimit = auth.rateLimitPerDay || 10000;
+  // Stricter limits for unauthenticated requests to prevent abuse
+  const isAuthenticated = auth.isAuthenticated;
+  const minuteLimit = isAuthenticated ? (auth.rateLimitPerMinute || 30) : 10;
+  const dayLimit = isAuthenticated ? (auth.rateLimitPerDay || 1000) : 100;
 
   // Check minute limit
   const minuteKey = `ratelimit:minute:${identifier}:${minuteWindow}`;
